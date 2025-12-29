@@ -596,30 +596,18 @@ def update_horizontal_lasers(dt):
 def generate_horizontal_lasers_for_level(level):
     """
     Generate vertical positions (z tracks) for horizontal lasers.
-    Avoid spawn center (z ~= 10) and the button safe zone.
     """
     horizontal_lasers.clear()
-    count = max(1, int(level))
-    candidates = [2.0, 4.0, 6.0, 8.0, 11.0, 13.0, 15.0, 17.0]
-
-    safe_margin = 1.5
-    safe_x_min = BUTTON_POS[0] - (BUTTON_RADIUS + safe_margin)
-    safe_x_max = BUTTON_POS[0] + (BUTTON_RADIUS + safe_margin)
-    safe_z_min = BUTTON_POS[2] - (BUTTON_RADIUS + safe_margin)
-    safe_z_max = BUTTON_POS[2] + (BUTTON_RADIUS + safe_margin)
+    count = int(level)
+    candidates = [5.0, 13.0, 3.0, 15.0, 11.0, 9.0, 7.0, 17.0]
 
     used = set()
     idx = 0
-    i = 0
-    while len(horizontal_lasers) < count and i < len(candidates) * 2:
+
+    while len(horizontal_lasers) < count:
         cand = candidates[idx % len(candidates)]
         idx += 1
-        i += 1
 
-        if abs(cand - 10.0) < 3.0:
-            continue
-        if safe_z_min <= cand <= safe_z_max:
-            continue
         if cand in used:
             continue
 
@@ -627,7 +615,7 @@ def generate_horizontal_lasers_for_level(level):
         x_max = room_size - 0.5
         base_y = 0.8
         thickness = 0.4
-        amp = 0.35
+        amp = 1.5
         freq = 0.6 + (len(horizontal_lasers) * 0.12)
         phase = (len(horizontal_lasers) * 1.3) % (2 * math.pi)
 
@@ -643,24 +631,6 @@ def generate_horizontal_lasers_for_level(level):
             'phase': phase
         })
         used.add(cand)
-
-    # backup filler if something weird happens
-    if len(horizontal_lasers) < count:
-        z_try = 1.0
-        while len(horizontal_lasers) < count and z_try < room_size - 1.0:
-            if abs(z_try - 10.0) >= 3.0 and not (safe_z_min <= z_try <= safe_z_max):
-                horizontal_lasers.append({
-                    'z': z_try,
-                    'base_y': 0.8,
-                    'y': 0.8,
-                    'thickness': 0.4,
-                    'x_min': 0.5,
-                    'x_max': room_size - 0.5,
-                    'amp': 0.35,
-                    'freq': 0.8,
-                    'phase': 0.0
-                })
-            z_try += 2.0
 
 
 # ---------------------------
@@ -923,10 +893,6 @@ def create_wall_with_tiles(start, end, height=9.0, rows=3, cols=12):
             wall_tiles.append([tile_coords, 'gray'])
 
 
-def _player_in_box(xmin, xmax, ymin, ymax, zmin, zmax):
-    return (xmin <= player_pos[0] <= xmax and ymin <= player_pos[1] <= ymax and zmin <= player_pos[2] <= zmax)
-
-
 def check_player_tile_collision():
     """Teleport player through paired portals when overlapping a portal tile."""
     global player_pos, last_teleport_time, player_yaw, v_y, is_falling, portals_used, game_score
@@ -990,7 +956,7 @@ def check_player_tile_collision():
             break
 
 
-def check_button_laser_collision():
+def check_player_laser_collision():
     """Check collisions with small blocking lethal zones, moving obstacles and horizontal lasers."""
     global player_pos, player_lives, game_over
     if game_over or level_complete or paused or not mouse_captured:
@@ -1005,7 +971,7 @@ def check_button_laser_collision():
         handle_player_death()
         return
 
-    # moving obstacles (lasers) hurt you on contact
+    # moving obstacles contact
     for obs in moving_obstacles:
         ox, oy, oz = obs['pos']
         dx = player_pos[0] - ox
@@ -1015,7 +981,7 @@ def check_button_laser_collision():
             handle_player_death()
             return
 
-    # horizontal lasers: check overlap in X span, Z thickness and vertical height
+    # horizontal lasers contact
     for laser in horizontal_lasers:
         x_min = laser['x_min']
         x_max = laser['x_max']
@@ -1052,7 +1018,7 @@ def check_button_interaction():
         dx = player_pos[0] - BUTTON_POS[0]
         dz = player_pos[2] - BUTTON_POS[2]
         distance = math.sqrt(dx * dx + dz * dz)
-        if distance <= BUTTON_RADIUS and player_pos[1] <= BUTTON_HEIGHT + 0.1:
+        if distance <= BUTTON_RADIUS:
             door_color = 'green'
             button_activated = True
             game_score += 100
@@ -1148,77 +1114,34 @@ def reset_game():
 # Moving obstacle generation
 # ---------------------------
 
-
 def generate_moving_obstacles_for_level(level):
     """
-    Create 2 * level moving obstacles, distributed and avoiding spawn and button safe zone.
-    Level 1 gets a special vertical obstacle across x ~= 4.5.
+    Create 2 * level moving obstacles.
+    Obstacles alternate between horizontal and vertical movement.
     """
     global moving_obstacles
     moving_obstacles.clear()
+
     total_count = 2 * level
-    candidate_positions = [2.0, 4.0, 6.0, 8.0, 11.0, 13.0, 15.0, 17.0]
+    candidate_positions = [3.0, 4.0, 7.0, 9.0, 11.0, 13.0, 15.0, 17.0]
 
-    safe_margin = 1.5
-    safe_x_min = BUTTON_POS[0] - (BUTTON_RADIUS + safe_margin)
-    safe_x_max = BUTTON_POS[0] + (BUTTON_RADIUS + safe_margin)
-    safe_z_min = BUTTON_POS[2] - (BUTTON_RADIUS + safe_margin)
-    safe_z_max = BUTTON_POS[2] + (BUTTON_RADIUS + safe_margin)
-
-    def is_track_intersecting_safe_zone(is_horizontal, fixed_coord, min_var, max_var):
-        if is_horizontal:
-            z = fixed_coord
-            if safe_z_min <= z <= safe_z_max and not (max_var < safe_x_min or min_var > safe_x_max):
-                return True
-        else:
-            x = fixed_coord
-            if safe_x_min <= x <= safe_x_max and not (max_var < safe_z_min or min_var > safe_z_max):
-                return True
-        return False
-
-    special_placed = False
-    if level == 1:
-        x_special = 4.5
-        min_z_special = 0.5
-        max_z_special = 8.5
-        speed = OBSTACLE_SPEED * (1.0 + 0.05 * level) * 1.0
-        moving_obstacles.append({
-            'pos': [x_special, 4.5, min_z_special],
-            'speed': speed,
-            'direction': 'vertical',
-            'min_x': x_special,
-            'max_x': x_special,
-            'min_z': min_z_special,
-            'max_z': max_z_special
-        })
-        special_placed = True
-
-    remaining = total_count - (1 if special_placed else 0)
     idx = 0
     added = 0
-    attempt = 0
-    while added < remaining and attempt < remaining * 6:
-        attempt += 1
+
+    while added < total_count:
         is_horizontal = (added % 2 == 0)
+
         if is_horizontal:
             z_choice = candidate_positions[idx % len(candidate_positions)]
             idx += 1
-            if abs(z_choice - 10.0) < 3.0 or (safe_z_min <= z_choice <= safe_z_max):
-                z_choice = 3.0 if z_choice >= 10.0 else 17.0
-            if special_placed and abs(z_choice - 8.5) < 0.6:
-                z_choice = 6.0 if z_choice > 8.5 else 11.0
+
             min_x = 1.0
             max_x = room_size - 1.0
             x = 2.0 + (added * 3) % int(room_size - 4)
-            if abs(x - 10.0) < 3.0:
-                x = 2.0 if x >= 10.0 else room_size - 2.0
-            if is_track_intersecting_safe_zone(True, z_choice, min_x, max_x):
-                if z_choice <= safe_z_min:
-                    z_choice = max(1.0, safe_z_min - 2.0)
-                else:
-                    z_choice = min(room_size - 1.0, safe_z_max + 2.0)
+
             speed = OBSTACLE_SPEED * \
                 (1.0 + 0.05 * level) * (1 if added % 4 < 2 else -1)
+
             moving_obstacles.append({
                 'pos': [x, 4.5, z_choice],
                 'speed': speed,
@@ -1229,25 +1152,18 @@ def generate_moving_obstacles_for_level(level):
                 'max_z': z_choice
             })
             added += 1
+
         else:
             x_choice = candidate_positions[idx % len(candidate_positions)]
             idx += 1
-            if abs(x_choice - 10.0) < 3.0 or (safe_x_min <= x_choice <= safe_x_max):
-                x_choice = 17.0 if x_choice <= 10.0 else 2.0
-            if special_placed and abs(x_choice - 4.5) < 0.8:
-                x_choice = 17.0 if x_choice <= 10.0 else 2.0
+
             min_z = 1.0
             max_z = room_size - 1.0
             z = 2.0 + (added * 2) % int(room_size - 4)
-            if abs(z - 10.0) < 3.0:
-                z = room_size - 2.0 if z >= 10.0 else 2.0
-            if is_track_intersecting_safe_zone(False, x_choice, min_z, max_z):
-                if x_choice <= safe_x_min:
-                    x_choice = max(1.0, safe_x_min - 2.0)
-                else:
-                    x_choice = min(room_size - 1.0, safe_x_max + 2.0)
+
             speed = OBSTACLE_SPEED * \
                 (1.0 + 0.05 * level) * (1 if added % 4 < 2 else -1)
+
             moving_obstacles.append({
                 'pos': [x_choice, 4.5, z],
                 'speed': speed,
@@ -1258,32 +1174,6 @@ def generate_moving_obstacles_for_level(level):
                 'max_z': max_z
             })
             added += 1
-
-    # Safety pass to nudge obstacles away from spawn & button safe zone
-    for obs in moving_obstacles:
-        ox, oy, oz = obs['pos']
-        dx = ox - 10.0
-        dz = oz - 10.0
-        if math.hypot(dx, dz) < 3.0:
-            if dx >= 0:
-                ox = min(room_size - 1.0, ox + 3.0)
-            else:
-                ox = max(1.0, ox - 3.0)
-            if dz >= 0:
-                oz = min(room_size - 1.0, oz + 3.0)
-            else:
-                oz = max(1.0, oz - 3.0)
-        if safe_x_min <= ox <= safe_x_max and safe_z_min <= oz <= safe_z_max:
-            if ox >= BUTTON_POS[0]:
-                ox = min(room_size - 1.0, ox + (BUTTON_RADIUS + safe_margin))
-            else:
-                ox = max(1.0, ox - (BUTTON_RADIUS + safe_margin))
-            if oz >= BUTTON_POS[2]:
-                oz = min(room_size - 1.0, oz + (BUTTON_RADIUS + safe_margin))
-            else:
-                oz = max(1.0, oz - (BUTTON_RADIUS + safe_margin))
-        obs['pos'][0] = max(1.0, min(room_size - 1.0, ox))
-        obs['pos'][2] = max(1.0, min(room_size - 1.0, oz))
 
 
 # ---------------------------
@@ -1481,7 +1371,7 @@ def display():
         # game state checks each frame
         check_player_tile_collision()
         check_door_collision()
-        check_button_laser_collision()
+        check_player_laser_collision()
         check_button_interaction()
 
         lx = math.sin(math.radians(player_yaw)) * \
@@ -1531,7 +1421,7 @@ def idle():
         update_moving_platform(dt)
         update_horizontal_lasers(dt)
         check_player_tile_collision()
-        check_button_laser_collision()
+        check_player_laser_collision()
 
     glutPostRedisplay()
 
