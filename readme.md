@@ -1,4 +1,4 @@
-# Portal Escape (Phase Lock)
+# Neon Portal (Portal Escape Game)
 
 Portal Escape, also referred to as Phase Lock, is a first-person 3D puzzle-platform shooter built using OpenGL. The game combines precision shooting, spatial puzzle-solving, and timing-based challenges within enclosed, neon-styled environments. Players navigate tiled rooms, create paired portals on walls, interact with environmental elements, avoid dynamic hazards, and reach the exit to complete each level.
 
